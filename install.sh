@@ -2,7 +2,7 @@
 # ╔══════════════════════════════════════════════════════════════════════════════╗
 # ║  Beeuni CLI — one-click install                                              ║
 # ║                                                                              ║
-# ║      curl -fsSL https://beeuni.ai/install | bash                               ║
+# ║      curl -fsSL https://beeuni.ai/install | bash                            ║
 # ║                                                                              ║
 # ║  Downloads the prebuilt `beeuni` binary for your OS + arch from              ║
 # ║  GitHub Releases and drops it on PATH.                                       ║
@@ -20,12 +20,6 @@ CHANNEL="${BEEUNI_CHANNEL:-prod}"
 # Stable releases are tagged `vX.Y.Z` (unified version). The dev channel uses
 # the mutable `dev-latest` prerelease.
 DEV_TAG="dev-latest"
-CHECKSUM_ASSET="SHA256SUMS"
-
-cleanup() {
-  rm -f "${TMP_BIN:-}" "${TMP_SUMS:-}"
-}
-trap cleanup EXIT
 
 # ─── Colors ───────────────────────────────────────────────────────────────────
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -45,15 +39,10 @@ print_banner() {
   printf "\n"
   printf "${C}"
   cat <<'EOF'
-    ██╗   ██╗ █████╗ ██╗     ██╗  ██╗ ██████╗ ██████╗
-    ██║   ██║██╔══██╗██║     ██║ ██╔╝██╔═══██╗██╔══██╗
-    ██║   ██║███████║██║     █████╔╝ ██║   ██║██████╔╝
-    ╚██╗ ██╔╝██╔══██║██║     ██╔═██╗ ██║   ██║██╔══██╗
-     ╚████╔╝ ██║  ██║███████╗██║  ██╗╚██████╔╝██║  ██║
-      ╚═══╝  ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝
+    Beeuni
 EOF
   printf "${N}\n"
-  printf "    ${W}The operating system for AI workers${N}\n"
+  printf "    ${W}The cloud agent that gets better with you${N}\n"
   printf "    ${F}One-click CLI installer${N}\n"
   printf "\n"
 }
@@ -110,7 +99,7 @@ resolve_version() {
     | head -1 \
     | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/' || true)
   if [ -z "$tag" ]; then
-    fatal "Could not find a vX.Y.Z release on github.com/${REPO}. Pin one with \`BEEUNI_VERSION=0.1.0 …\` or use the dev channel (\`BEEUNI_CHANNEL=dev\`)."
+    fatal "Could not find a vX.Y.Z release on github.com/${REPO}. Pin one with \`BEEUNI_VERSION=0.9.0 …\` or use the dev channel (\`BEEUNI_CHANNEL=dev\`)."
   fi
   VERSION="$tag"
   ok "Latest release: $VERSION"
@@ -119,39 +108,44 @@ resolve_version() {
 # ─── Download the binary to a temp file ──────────────────────────────────────
 download_binary() {
   local url="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
+  local sums_url="https://github.com/${REPO}/releases/download/${VERSION}/SHA256SUMS"
+  local sums expected actual
+  sums="$(mktemp -t beeuni-sums.XXXXXX)"
   TMP_BIN="$(mktemp -t beeuni-install.XXXXXX)"
+  # Verify before anything becomes executable (same rule as the TUI downloader,
+  # apps/cli/src/tui-bin.ts): the release publishes SHA256SUMS for every asset,
+  # so refuse to install anything the manifest does not cover or that does not
+  # match. Fail closed on a missing manifest, a missing line, or a mismatch.
+  info "Fetching SHA256SUMS…"
+  if ! curl -fsSL "$sums_url" -o "$sums"; then
+    rm -f "$sums" "$TMP_BIN"
+    fatal "Release ${VERSION} publishes no SHA256SUMS. Refusing to install an unverified binary."
+  fi
+  expected="$(awk -v asset="$ASSET" '{ name=$2; sub(/^\.\//, "", name); if (name == asset) { print $1; exit } }' "$sums")"
+  if [ -z "$expected" ]; then
+    rm -f "$sums" "$TMP_BIN"
+    fatal "SHA256SUMS lists no checksum for ${ASSET}. Refusing to install an unverified binary."
+  fi
   info "Downloading ${ASSET}…"
   printf "    ${F}from ${url}${N}\n"
   if ! curl -fsSL "$url" -o "$TMP_BIN"; then
-    rm -f "$TMP_BIN"
+    rm -f "$sums" "$TMP_BIN"
     fatal "Failed to download $url. Check the release page on github.com/${REPO}/releases."
   fi
-  chmod +x "$TMP_BIN"
-  ok "Downloaded ($(du -h "$TMP_BIN" | awk '{print $1}'))"
-}
-
-download_and_verify_checksum() {
-  local sums_url="https://github.com/${REPO}/releases/download/${VERSION}/${CHECKSUM_ASSET}"
-  TMP_SUMS="$(mktemp -t beeuni-checksums.XXXXXX)"
-  info "Downloading ${CHECKSUM_ASSET}…"
-  if ! curl -fsSL "$sums_url" -o "$TMP_SUMS"; then
-    rm -f "$TMP_SUMS"
-    fatal "Failed to download ${CHECKSUM_ASSET} from $sums_url. Refusing to install an unverified binary."
-  fi
-
-  local expected actual
-  expected="$(awk -v target="$ASSET" '$2 == target || $2 == "*" target { print $1; exit }' "$TMP_SUMS")"
-  [ -n "$expected" ] || fatal "${ASSET} is missing from ${CHECKSUM_ASSET}. Refusing to install an unverified binary."
-
   if command -v sha256sum >/dev/null 2>&1; then
     actual="$(sha256sum "$TMP_BIN" | awk '{print $1}')"
-  elif command -v shasum >/dev/null 2>&1; then
-    actual="$(shasum -a 256 "$TMP_BIN" | awk '{print $1}')"
   else
-    fatal "Neither sha256sum nor shasum is available; cannot verify the downloaded binary."
+    # macOS ships shasum, not sha256sum.
+    actual="$(shasum -a 256 "$TMP_BIN" | awk '{print $1}')"
   fi
-  [ "$actual" = "$expected" ] || fatal "Checksum verification failed for ${ASSET}."
-  ok "Checksum verified"
+  if [ "$actual" != "$expected" ]; then
+    rm -f "$sums" "$TMP_BIN"
+    fatal "Checksum mismatch for ${ASSET}: expected ${expected}, got ${actual}. The download is corrupt or tampered with — refusing to install."
+  fi
+  rm -f "$sums"
+  ok "Checksum verified (${expected})"
+  chmod +x "$TMP_BIN"
+  ok "Downloaded ($(du -h "$TMP_BIN" | awk '{print $1}'))"
 }
 
 # ─── Install the binary ──────────────────────────────────────────────────────
@@ -166,10 +160,15 @@ install_binary() {
 # ─── Symlink it onto $PATH ───────────────────────────────────────────────────
 link_onto_path() {
   local target="$INSTALL_HOME/$BINARY_NAME"
-  # Preferred: /usr/local/bin (already on most PATHs).
-  if [ -d "/usr/local/bin" ] && [ -w "/usr/local/bin" ]; then
-    ln -sf "$target" "/usr/local/bin/${BINARY_NAME}"
-    ok "Symlinked /usr/local/bin/${BINARY_NAME} → ${target}"
+  # The bin dir defaults to /usr/local/bin, exactly as before. BEEUNI_BIN_DIR
+  # exists so a test can drive this installer without touching the box's real
+  # PATH (see .agents/skills/learnings 2026-10-03: a fixture write to the real
+  # bin dir shadows the installed CLI).
+  local bin_dir="${BEEUNI_BIN_DIR:-/usr/local/bin}"
+  if [ -d "$bin_dir" ] && [ -w "$bin_dir" ]; then
+    ln -sf "$target" "${bin_dir}/${BINARY_NAME}"
+    ln -sf "$target" "${bin_dir}/${BINARY_NAME}t"
+    ok "Symlinked ${bin_dir}/${BINARY_NAME} → ${target}"
     return
   fi
   # Fallback: ~/.local/bin if it exists.
@@ -177,6 +176,7 @@ link_onto_path() {
   if [ -d "$local_bin" ]; then
     mkdir -p "$local_bin"
     ln -sf "$target" "${local_bin}/${BINARY_NAME}"
+    ln -sf "$target" "${local_bin}/${BINARY_NAME}t"
     ok "Symlinked ${local_bin}/${BINARY_NAME} → ${target}"
     case ":$PATH:" in
       *":${local_bin}:"*) ;;
@@ -190,7 +190,7 @@ link_onto_path() {
   # Last resort: try sudo for /usr/local/bin.
   if command -v sudo >/dev/null 2>&1; then
     info "Linking via sudo (you may be prompted for your password)…"
-    if sudo ln -sf "$target" "/usr/local/bin/${BINARY_NAME}"; then
+    if sudo ln -sf "$target" "/usr/local/bin/${BINARY_NAME}" && sudo ln -sf "$target" "/usr/local/bin/${BINARY_NAME}t"; then
       ok "Symlinked /usr/local/bin/${BINARY_NAME} → ${target}"
       return
     fi
@@ -211,7 +211,7 @@ verify_install() {
     warn "Binary installed but \`beeuni version\` failed. Try running it directly: $target"
     return
   fi
-  ok "valkor --version → $("$target" version | head -1 | sed 's/^[[:space:]]*//')"
+  ok "beeuni --version → $("$target" version | head -1 | sed 's/^[[:space:]]*//')"
 }
 
 print_next_steps() {
@@ -239,7 +239,6 @@ main() {
   section "Fetching binary"
   resolve_version
   download_binary
-  download_and_verify_checksum
 
   section "Installing"
   install_binary

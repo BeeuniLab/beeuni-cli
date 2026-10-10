@@ -23,10 +23,10 @@ To install a specific version:
 The release assets are named:
 
 ```text
-valkor-darwin-arm64
-valkor-darwin-x64
-valkor-linux-arm64
-valkor-linux-x64
+beeuni-darwin-arm64
+beeuni-darwin-x64
+beeuni-linux-arm64
+beeuni-linux-x64
 SHA256SUMS
 ```
 
@@ -46,7 +46,7 @@ beeuni projects link
 beeuni --help
 ```
 
-The CLI connects to the Beeuni platform API at `https://valkorapi.beeuni.ai` by default.
+The CLI connects to the Beeuni platform API at `https://api.beeuni.ai` by default.
 Use `beeuni login --help` to configure a different host or API endpoint.
 
 ## Releases
