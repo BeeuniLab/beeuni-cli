@@ -1,6 +1,6 @@
-# Valkor CLI
+# Beeuni CLI
 
-This is the public distribution repository for the Valkor command-line
+This is the public distribution repository for the Beeuni command-line
 client. The CLI source remains in a private repository; this repository only
 contains the installer, release metadata, and prebuilt binaries attached to
 GitHub Releases.
@@ -17,7 +17,7 @@ The installer detects macOS or Linux and downloads the matching binary for
 To install a specific version:
 
 ```sh
-curl -fsSL https://beeuni.ai/install | VALKOR_VERSION=0.1.5 bash
+  curl -fsSL https://beeuni.ai/install | BEEUNI_VERSION=0.1.0 bash
 ```
 
 The release assets are named:
@@ -32,7 +32,7 @@ SHA256SUMS
 
 ## Desktop app
 
-Desktop installers are attached to the [latest release](https://github.com/valkor-ai/valkor-cli/releases/latest).
+Desktop installers are attached to the [latest release](https://github.com/BeeuniLab/beeuni-cli/releases/latest).
 The macOS download is a universal `.dmg` for Apple Silicon and Intel. Desktop
 releases also include update metadata alongside the installers.
 These desktop installers are unsigned; in-app automatic updates require signed builds.
@@ -40,17 +40,17 @@ These desktop installers are unsigned; in-app automatic updates require signed b
 ## Usage
 
 ```sh
-valkor login
-valkor projects ls
-valkor projects link
-valkor --help
+beeuni login
+beeuni projects ls
+beeuni projects link
+beeuni --help
 ```
 
-The CLI connects to the Valkor platform API at `https://valkorapi.beeuni.ai` by default.
-Use `valkor login --help` to configure a different host or API endpoint.
+The CLI connects to the Beeuni platform API at `https://valkorapi.beeuni.ai` by default.
+Use `beeuni login --help` to configure a different host or API endpoint.
 
 ## Releases
 
-Releases are built from the private Valkor source repository and published
+Releases are built from the private Beeuni source repository and published
 here by the release workflow. This repository does not contain the CLI source
 code or the private platform configuration.
