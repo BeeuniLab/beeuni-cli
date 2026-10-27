@@ -3,3 +3,6 @@
 .env.*
 *.tmp
 *.log
+
+# Local release build artifacts; keep versioned release notes (*.md).
+/releases/*/
