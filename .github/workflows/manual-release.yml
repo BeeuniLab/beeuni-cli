@@ -1,0 +1,57 @@
+name: Build CLI release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing draft release version, without v
+        required: true
+      source_commit:
+        description: Full source commit SHA
+        required: true
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          repository: BeeuniLab/beeuni
+          ref: ${{ inputs.source_commit }}
+          token: ${{ secrets.BEEUNI_RELEASE_SOURCE_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '8.11.0'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.3'
+      - name: Install build dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter @beeuni/cli... --filter @beeuni/tui...
+      - name: Build binaries
+        env:
+          BEEUNI_CLI_VERSION: ${{ inputs.version }}
+        run: |
+          bash apps/cli/bundle/bundle-all.sh
+          bash apps/tui/bundle/bundle-all.sh
+          apps/cli/bundle/beeuni-darwin-arm64 --version
+          apps/tui/bundle/beeuni-tui-darwin-arm64 --version
+          mkdir -p release
+          cp apps/cli/bundle/beeuni-{darwin-arm64,darwin-x64,linux-arm64,linux-x64} release/
+          cp apps/tui/bundle/beeuni-tui-{darwin-arm64,darwin-x64,linux-arm64,linux-x64} release/
+      - name: Copy desktop installers and upload draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          cd release
+          gh release download v0.6.2 --repo BeeuniLab/beeuni-cli --pattern 'Beeuni-*' --pattern 'latest*.yml'
+          gh release download "v$RELEASE_VERSION" --repo BeeuniLab/beeuni-cli --pattern SOURCE.json
+          for binary in beeuni-tui-{darwin-arm64,darwin-x64,linux-arm64,linux-x64}; do shasum -a 256 "$binary" > "$binary.sha256"; done
+          shasum -a 256 Beeuni-* beeuni-* latest*.yml SOURCE.json > SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
+          gh release upload "v$RELEASE_VERSION" --repo BeeuniLab/beeuni-cli --clobber Beeuni-* beeuni-* latest*.yml SOURCE.json SHA256SUMS
